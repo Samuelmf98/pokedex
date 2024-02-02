@@ -9,6 +9,8 @@ services:
       - ./app:/app  # Mount the application code as a volume
     command: /start-reload.sh  # Use the live reload script
     restart: always
+    depends_on:
+      - db
 
 
   db:

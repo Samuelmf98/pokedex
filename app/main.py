@@ -27,9 +27,9 @@ from models.pokedex import create_table_if_not_exists
 
 from jwt_config import validar_token
 
-main = FastAPI()
-main.title = "Pokedex de Samuel"
-main.version = "1.0.1"
+app = FastAPI()
+app.title = "Pokedex de Samuel"
+app.version = "1.0.1"
 
 
 load_dotenv()
@@ -52,7 +52,7 @@ class Portador(HTTPBearer):
             raise HTTPException(status_code=403, detail="No autorizado")
 
 
-@main.get("/pokemon/{name}", tags=["Pokemon"])
+@app.get("/pokemon/{name}", tags=["Pokemon"])
 def fetch_pokemon(name: str):
 
     conn = psycopg2.connect(DATABASE_URL)
@@ -77,7 +77,7 @@ def fetch_pokemon(name: str):
                     "name": data.get("name", "Sin Nombre"),
                     "height": str(data.get("height", 0)),
                     "weight": str(data.get("weight", 0)),
-                    "created_date": datetime.datetime.now()
+                    "created_date": str(datetime.datetime.now())
                 }
 
 
@@ -89,8 +89,20 @@ def fetch_pokemon(name: str):
                 conn.commit()
                 cur.close()
                 conn.close()
+                
+
+                url = "https://api.ignabisi.com/v1/poke/"
+                content = {'pokemon': new_pokemon}
+                response = requests.post(url, json=content)
+                if response.status_code == 200:
+                    response_json = response.json()   
+                else:
+                    response_json = {"content": "V2 cannot be reached"}
+
+
                 return {'message': "Requesting...",
-                        "data": new_pokemon}
+                        "data": new_pokemon,
+                        "response_v2": response_json}
             else:
                     return JSONResponse(
                         content={
@@ -101,28 +113,8 @@ def fetch_pokemon(name: str):
             return JSONResponse(
                 content={"mensaje": f"Error en el servidor: {str(e)}"}
             )
+    
+
+          
 
 
-
-
-
-@main.delete("/pokemon/{name}", tags=["Pokemon"])
-def delete_pokemon(name: str):
-    #with sesion() as db:
-        #resultado = db.query(pokedexmodelo).filter(pokedexmodelo.name == name).first()
-        #if not resultado:
-            raise HTTPException(
-                status_code=404, detail="No se ha encontrado el pokemon"
-            )
-
-        #db.delete(resultado)
-        #db.commit()
-        #return {"mensaje": f"El pokemon {name} se ha eliminado correctamente"}
-
-
-# @main.post('/login',tags=['Autenticacion'])
-# def login(usuario:Usuario):
-#     if usuario.email == '1234' and usuario.clave == '1234':
-#         token:str=dame_token(usuario.dict())
-#         return JSONResponse(status_code=200,content=token)
-#     return JSONResponse(content={'message':'Error de autenticacion'},status_code=401)

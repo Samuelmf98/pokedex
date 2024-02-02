@@ -1,5 +1,5 @@
 fastapi==0.104.1
-psycopg2-binary==2.9.1
+psycopg2-binary==2.9.6
 PyJWT==2.3.0
 requests
 sqlalchemy
