@@ -9,3 +9,19 @@ services:
       - ./app:/app  # Mount the application code as a volume
     command: /start-reload.sh  # Use the live reload script
     restart: always
+
+
+  db:
+    image: postgres:latest
+    container_name: postgresql_pokedex
+    environment:
+      POSTGRES_PASSWORD: secret
+      POSTGRES_USER: secret
+      POSTGRES_DB: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - data:/var/lib/postgresql/data  # Define el volumen "data" aquí
+
+volumes:
+  data:  # Define el volumen "data" aquí

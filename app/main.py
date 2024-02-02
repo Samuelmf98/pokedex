@@ -4,36 +4,43 @@ from fastapi.responses import JSONResponse
 from fastapi.security import HTTPBearer
 from pydantic import BaseModel
 import datetime
+from dotenv import load_dotenv
+import os
+import psycopg2
 
 import logging
 
 logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)
 
-from config.base_de_datos import base, motor, sesion
+# Obtener la ruta al directorio 'main' (un nivel arriba de donde se encuentra este archivo) (solo si esta en un directorio anterior) 
+
+#basedir = os.path.abspath(os.path.dirname(__file__))
+#main_dir = os.path.join(basedir, '..')
+#sys.path.append(main_dir)
+
+# Cargar las variables de entorno desde .env (dentro del directorio 'main')
+
+#load_dotenv(os.path.join(main_dir, 'main', '.env'))
+
+from models.pokedex import create_table_if_not_exists
+
 from jwt_config import validar_token
-from modelos.pokedex import (
-    pokedex as pokedexmodelo,
-)  # le ponemos un alias para evitar confundir el nombre con otros parecidos que ya hemos definido
 
-app = FastAPI()
-app.title = "Pokedex de Samuel"
-app.version = "1.0.1"
+main = FastAPI()
+main.title = "Pokedex de Samuel"
+main.version = "1.0.1"
 
-#base.metadata.drop_all(bind=motor)
-base.metadata.create_all(bind=motor)
 
+load_dotenv()
+DATABASE_URL = os.environ['DATABASE_URL']
+
+create_table_if_not_exists()
 
 class Usuario(BaseModel):
     email: str
     clave: str
 
-
-class Pokemon(BaseModel):  # creamos un modelo
-    name: str
-    height: str
-    weight: str
-    created_at: str
 
 
 class Portador(HTTPBearer):
@@ -45,66 +52,75 @@ class Portador(HTTPBearer):
             raise HTTPException(status_code=403, detail="No autorizado")
 
 
-@app.get("/pokemon/{name}", tags=["Pokemon"])
+@main.get("/pokemon/{name}", tags=["Pokemon"])
 def fetch_pokemon(name: str):
-    with sesion() as db:
-        existing_pokemon = db.query(pokedexmodelo).filter_by(name=name).first()
-        if existing_pokemon:
-            return existing_pokemon
-        else:
-            try:
-                # Llamada a la API de la Pokédex
-                api_url = f"https://pokeapi.co/api/v2/pokemon/{name}"
-                response = requests.get(api_url)
 
-                if response.status_code == 200:
-                    data: dict = response.json()
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+    
+    cur.execute("SELECT * FROM my_pokedex WHERE name = %s", (name,))
+    pokemon = cur.fetchone()
+    conn.close()
 
-                    new_pokemon = pokedexmodelo(
-                        name=data.get("name", "Sin Nombre"),
-                        height=str(data.get("height", 0)),
-                        weight=str(data.get("weight", 0)),
-                        created_date=datetime.datetime.now(),
-                    )
+    if pokemon:
+        return {'message': f"Pokemon {name} is already in the database",
+                "data": pokemon}
+    else:
+        try:
 
-                    db.add(new_pokemon)
-                    db.commit()
-                    return {
-                        "name": new_pokemon.name,
-                        "height": new_pokemon.height,
-                        "weight": new_pokemon.weight,
-                        "created_date": new_pokemon.created_date.strftime(
-                            "%Y-%m-%d %H:%M:%S"
-                        ),
-                    }
+            api_url = f"https://pokeapi.co/api/v2/pokemon/{name}"
+            response = requests.get(api_url)
+            if response.status_code == 200:
+                data: dict = response.json()
 
-                else:
+                new_pokemon = {
+                    "name": data.get("name", "Sin Nombre"),
+                    "height": str(data.get("height", 0)),
+                    "weight": str(data.get("weight", 0)),
+                    "created_date": datetime.datetime.now()
+                }
+
+
+                conn = psycopg2.connect(DATABASE_URL)
+                cur = conn.cursor()
+                
+                cur.execute("INSERT INTO my_pokedex (name, height, weight, created_date) VALUES (%s, %s, %s, %s)", 
+                    (new_pokemon['name'], new_pokemon['height'], new_pokemon['weight'], new_pokemon['created_date']))
+                conn.commit()
+                cur.close()
+                conn.close()
+                return {'message': "Requesting...",
+                        "data": new_pokemon}
+            else:
                     return JSONResponse(
                         content={
                             "mensaje": f"Error al hacer la solicitud. Código de estado: {response.status_code}"
                         }
                     )
-            except Exception as e:
-                return JSONResponse(
-                    content={"mensaje": f"Error en el servidor: {str(e)}"}
-                )
+        except Exception as e:
+            return JSONResponse(
+                content={"mensaje": f"Error en el servidor: {str(e)}"}
+            )
 
 
-@app.delete("/pokemon/{name}", tags=["Pokemon"])
+
+
+
+@main.delete("/pokemon/{name}", tags=["Pokemon"])
 def delete_pokemon(name: str):
-    with sesion() as db:
-        resultado = db.query(pokedexmodelo).filter(pokedexmodelo.name == name).first()
-        if not resultado:
+    #with sesion() as db:
+        #resultado = db.query(pokedexmodelo).filter(pokedexmodelo.name == name).first()
+        #if not resultado:
             raise HTTPException(
                 status_code=404, detail="No se ha encontrado el pokemon"
             )
 
-        db.delete(resultado)
-        db.commit()
-        return {"mensaje": f"El pokemon {name} se ha eliminado correctamente"}
+        #db.delete(resultado)
+        #db.commit()
+        #return {"mensaje": f"El pokemon {name} se ha eliminado correctamente"}
 
 
-# @app.post('/login',tags=['Autenticacion'])
+# @main.post('/login',tags=['Autenticacion'])
 # def login(usuario:Usuario):
 #     if usuario.email == '1234' and usuario.clave == '1234':
 #         token:str=dame_token(usuario.dict())
